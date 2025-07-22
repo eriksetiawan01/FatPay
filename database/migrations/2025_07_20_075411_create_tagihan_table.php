@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('tagihan', function (Blueprint $table) {
             $table->id();
-            $table->string('nis_siswa', 20);
+            $table->unique(['nis_siswa', 'id_pos', 'tahun_ajaran', 'bulan']);
             $table->foreign('nis_siswa')->references('nis')->on('siswa')->onDelete('cascade');
             $table->foreignId('id_pos')->constrained('pos_pembayaran');
             $table->tinyInteger('bulan')->nullable(); // 1-12

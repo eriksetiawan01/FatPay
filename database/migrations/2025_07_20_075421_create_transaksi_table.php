@@ -14,7 +14,6 @@ return new class extends Migration
         Schema::create('transaksi', function (Blueprint $table) {
             $table->id();
             $table->date('tanggal');
-            $table->string('nis_siswa', 20);
             $table->foreign('nis_siswa')->references('nis')->on('siswa')->onDelete('cascade');
             $table->foreignId('petugas_id')->constrained('users');
             $table->decimal('total_bayar', 12, 2);

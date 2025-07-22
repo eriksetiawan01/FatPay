@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\KelasController;
+use App\Http\Controllers\PembayaranController;
 use App\Http\Controllers\SiswaController;
 use App\Http\Controllers\StaffController;
 use Illuminate\Support\Facades\Route;
@@ -32,6 +33,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/siswa/template', [SiswaController::class, 'downloadTemplate'])->name('siswa.template');
         Route::post('/siswa/import', [SiswaController::class, 'import'])->name('siswa.import');
         Route::post('/siswa/batch', [SiswaController::class, 'batchUpdate'])->name('siswa.batch');
+
+        // Manajemen pembayaran
+        Route::get('/pembayaran', [PembayaranController::class, 'index'])->name('pembayaran.index');
+        Route::post('/pos-pembayaran', [PembayaranController::class, 'store'])->name('pos.store');
+        Route::get('/pembayaran/{nis}', [PembayaranController::class, 'show'])->name('pembayaran.show');
+        Route::post('/pembayaran/{nis}/bayar', [PembayaranController::class, 'bayar'])->name('pembayaran.bayar');
+        Route::post('/tagihan-kelas', [PembayaranController::class, 'storeByKelas'])->name('tagihan.kelas');
+        Route::post('/tagihan', [PembayaranController::class, 'storeBySiswa'])->name('tagihan.siswa');
+
+
+
 
 
 
