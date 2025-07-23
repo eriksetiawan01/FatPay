@@ -141,10 +141,23 @@ class SiswaController extends Controller
         'file' => 'required|mimes:xlsx,xls',
     ]);
 
+    // Reset array duplikat
+    SiswaImport::$duplikat = [];
+
+    // Lakukan import
     Excel::import(new SiswaImport, $request->file('file'));
+
+    // Jika ada duplikat, kirim ke frontend
+    if (!empty(SiswaImport::$duplikat)) {
+        return redirect()->back()->with([
+            'success' => 'Import selesai, tetapi beberapa data sudah duplikat.',
+            'duplikat' => SiswaImport::$duplikat,
+        ]);
+    }
 
     return redirect()->back()->with('success', 'Import berhasil!');
 }
+
 
     /**
      * Download the template for importing siswa data.
@@ -154,31 +167,29 @@ public function downloadTemplate(): StreamedResponse
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
 
-        $sheet->fromArray([
-        'nis',
+    // Sesuai dengan format dari file Excel yang kamu upload
+    $sheet->fromArray([
+        'nomor',
+        'no induk',
+        'nama siswa',
+        'nik siswa',
         'nisn',
-        'nik_siswa',
-        'nama_lengkap',
-        'jenis_kelamin', // L/P
-        'tempat_lahir',
-        'tanggal_lahir', // YYYY-MM-DD
+        'ttl',
+        'lp',
         'alamat',
-        'no_wa_ortu',
-        'nama_orang_tua',
-        'alamat_orang_tua',
-        'keterangan',
-        'status',
-        'nama_kelas', // ganti dari id_kelas ke kelas
+        'agama',
+        'kelas',
+        'no whatsapp',
     ], NULL, 'A1');
 
-    // Generate file
     $writer = new Xlsx($spreadsheet);
-    $fileName = 'template_import_siswa.xlsx';
+    $fileName = 'template_import_siswa_dinamis.xlsx';
 
     return response()->streamDownload(function () use ($writer) {
         $writer->save('php://output');
     }, $fileName);
 }
+
 
 public function batchUpdate(Request $request)
 {

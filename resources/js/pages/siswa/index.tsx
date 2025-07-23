@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Download, Pencil, Plus, Trash } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -119,6 +119,8 @@ export default function SiswaPage({ siswa, kelas, angkatan, filters }: PageProps
     const [kelasLulusTinggalId, setKelasLulusTinggalId] = useState('');
     const [actionSearchQuery, setActionSearchQuery] = useState('');
     const [availableStudentsForAction, setAvailableStudentsForAction] = useState<Siswa[]>([]);
+    const { props } = usePage();
+    const flash = props.flash as { success?: string; duplikat?: string[] };
 
     // Form handling
     const resetForm = () => {
@@ -195,6 +197,18 @@ export default function SiswaPage({ siswa, kelas, angkatan, filters }: PageProps
             },
         });
     };
+
+    useEffect(() => {
+    if (flash?.success) {
+        if (flash.duplikat?.length) {
+            alert(
+                `${flash.success}\n\nData yang duplikat:\n- ${flash.duplikat.join('\n- ')}`
+            );
+        } else {
+            alert(flash.success);
+        }
+    }
+}, [flash]);
 
     // Filter students for action tabs
     useEffect(() => {
@@ -325,6 +339,8 @@ export default function SiswaPage({ siswa, kelas, angkatan, filters }: PageProps
             <TableCell className="border border-gray-400 text-center">{(siswa.current_page - 1) * 10 + index + 1}</TableCell>
             <TableCell className="border border-gray-400 text-center">{item.nis}</TableCell>
             <TableCell className="border border-gray-400 text-center">{item.nik_siswa}</TableCell>
+            <TableCell className="border border-gray-400 text-center">{item.tempat_lahir}</TableCell>
+            <TableCell className="border border-gray-400 text-center">{item.tanggal_lahir}</TableCell>
             <TableCell className="border border-gray-400 text-center">{item.nisn}</TableCell>
             <TableCell className="border border-gray-400 text-center">{item.nama_lengkap}</TableCell>
             <TableCell className="border border-gray-400 text-center">{item.jenis_kelamin}</TableCell>
@@ -598,6 +614,8 @@ export default function SiswaPage({ siswa, kelas, angkatan, filters }: PageProps
                                             <TableHead className="border border-gray-400 text-center">No</TableHead>
                                             <TableHead className="border border-gray-400 text-center">NIS</TableHead>
                                             <TableHead className="border border-gray-400 text-center">NIK</TableHead>
+                                            <TableHead className="border border-gray-400 text-center">Tempat Lahir</TableHead>
+                                            <TableHead className="border border-gray-400 text-center">Tanggal Lahir</TableHead>
                                             <TableHead className="border border-gray-400 text-center">NISN</TableHead>
                                             <TableHead className="border border-gray-400 text-center">Nama</TableHead>
                                             <TableHead className="border border-gray-400 text-center">JK</TableHead>

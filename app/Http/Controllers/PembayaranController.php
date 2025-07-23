@@ -8,6 +8,8 @@ use App\Models\PosPembayaran;
 use App\Models\Siswa;
 use App\Models\Tagihan;
 use App\Models\Transaksi;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -17,39 +19,67 @@ class PembayaranController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-       $siswa = Siswa::with('kelas')
-    ->whereHas('tagihan') // hanya siswa yang punya tagihan
-    ->orderBy('nama_lengkap')
-    ->get();
-    $pos = PosPembayaran::all();
-    $tagihan = Tagihan::select('id', 'nis_siswa', 'id_pos', 'tahun_ajaran', 'bulan', 'nominal_tagihan', 'sisa_tagihan', 'status')
-    ->with(['siswa', 'pos'])
-    ->get();
-    $transaksi = Transaksi::with(['siswa', 'detail.tagihan.pos', 'petugas'])->get();
+      $querySiswa = Siswa::with('kelas')
+            ->whereHas('tagihan') // hanya siswa yang punya tagihan
+            ->orderBy('nama_lengkap');
 
-    $siswa->each(function ($s) {
-        $total = Tagihan::where('nis_siswa', $s->nis)->count();
-        $belumLunas = Tagihan::where('nis_siswa', $s->nis)->where('status', 'Belum Lunas')->count();
-
-        if ($total === 0) {
-            $s->status_pembayaran = '-';
-        } elseif ($belumLunas > 0) {
-            $s->status_pembayaran = 'Belum Lunas';
-        } else {
-            $s->status_pembayaran = 'Lunas';
+        // Filter berdasarkan nama atau NIS
+        if ($request->has('search') && $request->input('search') !== null) {
+            $searchTerm = $request->input('search');
+            $querySiswa->where(function ($query) use ($searchTerm) {
+                $query->where('nama_lengkap', 'like', '%' . $searchTerm . '%')
+                      ->orWhere('nis', 'like', '%' . $searchTerm . '%');
+            });
         }
-    });
 
-    return inertia('pembayaran/index', [
-        'siswa' => $siswa,
-        'pos' => $pos,
-        'tagihan' => $tagihan,
-        'transaksi' => $transaksi,
-        'kelas' => Kelas::all(),
-    ]);
+        // Filter berdasarkan siswa (NIS)
+        if ($request->has('filter_nis') && $request->input('filter_nis') !== null) {
+            $querySiswa->where('nis', $request->input('filter_nis'));
+        }
 
+        // Filter berdasarkan kelas
+        if ($request->has('filter_kelas') && $request->input('filter_kelas') !== null) {
+            $querySiswa->where('id_kelas', $request->input('filter_kelas'));
+        }
+
+        // Filter berdasarkan angkatan
+        if ($request->has('filter_angkatan') && $request->input('filter_angkatan') !== null) {
+            $querySiswa->whereHas('kelas', function ($q) use ($request) {
+                $q->where('angkatan', $request->input('filter_angkatan'));
+            });
+        }
+
+        $siswa = $querySiswa->get();
+        $pos = PosPembayaran::all();
+        $tagihan = Tagihan::select('id', 'nis_siswa', 'id_pos', 'tahun_ajaran', 'bulan', 'nominal_tagihan', 'sisa_tagihan', 'status')
+            ->with(['siswa', 'pos'])
+            ->get();
+        $transaksi = Transaksi::with(['siswa', 'detail.tagihan.pos', 'petugas'])->get();
+
+        $siswa->each(function ($s) {
+            $total = Tagihan::where('nis_siswa', $s->nis)->count();
+            $belumLunas = Tagihan::where('nis_siswa', $s->nis)->where('status', 'Belum Lunas')->count();
+
+            if ($total === 0) {
+                $s->status_pembayaran = '-';
+            } elseif ($belumLunas > 0) {
+                $s->status_pembayaran = 'Belum Lunas';
+            } else {
+                $s->status_pembayaran = 'Lunas';
+            }
+        });
+
+        return inertia('pembayaran/index', [
+            'siswa' => $siswa,
+            'pos' => $pos,
+            'tagihan' => $tagihan,
+            'transaksi' => $transaksi,
+            'kelas' => Kelas::all(),
+            'angkatan' => Kelas::select('angkatan')->distinct()->pluck('angkatan'), // Tambahkan angkatan
+            'filters' => $request->only(['search', 'filter_nis', 'filter_kelas', 'filter_angkatan']), // Kirim filter yang aktif
+        ]);
     }
 
     public function storeByKelas(Request $request)
@@ -217,6 +247,72 @@ public function storeBySiswa(Request $request)
 
     return redirect()->route('pembayaran.index')->with('success', 'Jenis pembayaran berhasil ditambahkan.');
     }
+
+/**
+     * Display report.
+     */
+    public function laporanIndex()
+    {
+        return inertia('laporan/index', [
+            'kelas' => Kelas::all(),
+            'angkatan' => Kelas::select('angkatan')->distinct()->pluck('angkatan'),
+            'siswa' => Siswa::select('nis', 'nama_lengkap')->orderBy('nama_lengkap')->get(),
+        ]);
+    }
+
+    public function getLaporan(Request $request)
+    {
+        $jenis = $request->input('jenis'); // pembayaran / tunggakan
+        $filter = $request->input('filter'); // hari, minggu, bulan, dst
+        $periode = $request->input('periode'); // misal: 2025-07 atau 2025, tergantung jenis filter
+        $siswa = $request->input('nis');
+        $kelas = $request->input('kelas_id');
+        $angkatan = $request->input('angkatan');
+
+        $query = $jenis === 'pembayaran'
+            ? Transaksi::with(['siswa.kelas', 'petugas', 'detail.tagihan.pos'])
+            : Tagihan::with(['siswa.kelas', 'pos'])->where('status', 'Belum Lunas');
+
+        // FILTER WAKTU
+        $query = match ($filter) {
+            'hari' => $query->whereDate('tanggal', $periode),
+            'minggu' => $query->whereBetween('tanggal', [Carbon::parse($periode)->startOfWeek(), Carbon::parse($periode)->endOfWeek()]),
+            'bulan' => $query->whereMonth('tanggal', Carbon::parse($periode)->month),
+            'triwulan' => $query->whereBetween('tanggal', [Carbon::parse($periode)->startOfQuarter(), Carbon::parse($periode)->endOfQuarter()]),
+            'semester' => $query->whereBetween('tanggal', [
+                Carbon::parse($periode)->month <= 6 ? Carbon::createFromDate(Carbon::parse($periode)->year, 1, 1) : Carbon::createFromDate(Carbon::parse($periode)->year, 7, 1),
+                Carbon::parse($periode)->month <= 6 ? Carbon::createFromDate(Carbon::parse($periode)->year, 6, 30) : Carbon::createFromDate(Carbon::parse($periode)->year, 12, 31),
+            ]),
+            'tahun' => $query->whereYear('tanggal', $periode),
+            default => $query
+        };
+
+        // FILTER OBJEK
+        if ($siswa) $query = $query->where('nis_siswa', $siswa);
+        if ($kelas) $query = $query->whereHas('siswa', fn($q) => $q->where('id_kelas', $kelas));
+        if ($angkatan) $query = $query->whereHas('siswa.kelas', fn($q) => $q->where('angkatan', $angkatan));
+
+        return response()->json([
+            'data' => $query->get()
+        ]);
+    }
+
+    /**
+     * Generate kwitansi PDF.
+     */
+    public function generateKwitansi($id_transaksi)
+{
+    $transaksi = Transaksi::with(['siswa', 'detail.tagihan.pos', 'petugas'])->findOrFail($id_transaksi);
+    
+    $pdf = Pdf::loadView('kwitansi', [
+        'transaksi' => $transaksi,
+        // Jika ingin menggunakan view React, bisa menggunakan:
+        // 'view' => 'KwitansiPdf',
+        // 'props' => compact('transaksi')
+    ]);
+    
+    return $pdf->download('kwitansi-'.$transaksi->id.'.pdf');
+}
 
     /**
      * Update the specified resource in storage.
